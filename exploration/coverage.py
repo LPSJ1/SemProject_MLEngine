@@ -1,3 +1,19 @@
+#here, was to check completeness and whether we can trust county-level data
+#the file has 8 county-level units and 73 sub-county units but only 1-4 per county
+#sub-counties and Kenya has ~290 -  a sample
+# the test is averaging each county's sb-counties and compare with the
+#official county figure. If they matched, sub-counties would stand in for the
+#whole county.
+#the result is they dont(off by 2.6-10.8mm on average, up to 70mm).
+#weighting by area (n_pixels) doesnt fix it.
+#
+#
+# decision is model 73 subcounties drop the 8 county rows
+
+
+
+
+
 import pandas as pd
 #________________________________________________________________________________________________________________________
 #once again using the CHIRPS rainfall indicator by the UN

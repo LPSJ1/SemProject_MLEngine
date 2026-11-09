@@ -1,3 +1,10 @@
+#builds model inputs for each sub-county and every dekad it calculates the 13 features the model learns from:
+#datasets own rain columns(rfh,rfq, etc)
+#lags (rain in previous dekads)
+#season(sin/cos)
+#nat_frac_anom(how widespread the wet spell is)
+#joins them to make flood labels from make_labels.py and saves data/features.csv
+
 import numpy as np
 import pandas as pd
 
