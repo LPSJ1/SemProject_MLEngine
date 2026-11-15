@@ -17,7 +17,7 @@ FEATURES = ["rfh", "rfh_avg", "rfq", "r1h", "r3h", "r1q", "r3q",
             "season_sin", "season_cos", "nat_frac_anom"]
 SEED = 42
 
-df = pd.read_csv("data/features.csv", parse_dates=["date"]).sort_values(["date", "PCODE"])
+df = pd.read_csv("data/processed/features.csv", parse_dates=["date"]).sort_values(["date", "PCODE"])
 df["split"] = np.where(df.date >= "2020-01-01", "test", "train")
 train, test = df[df.split == "train"], df[df.split == "test"]
 
@@ -86,9 +86,9 @@ print("\nfeature importance:")
 print(imp.round(3).to_string())
 
 # ---------- Add to the shared predictions file ----------
-pred = pd.read_csv("data/predictions.csv", parse_dates=["date"])
+pred = pd.read_csv("data/processed/predictions.csv", parse_dates=["date"])
 pred = pred.drop(columns=["rf_prob"], errors="ignore")
 rf_all = df[["PCODE", "date"]].assign(rf_prob=model.predict_proba(df[FEATURES])[:, 1])
 pred = pred.merge(rf_all, on=["PCODE", "date"], how="left")
-pred.to_csv("data/predictions.csv", index=False)
-print("\nadded rf_prob to data/predictions.csv")
+pred.to_csv("data/processed/predictions.csv", index=False)
+print("\nadded rf_prob to data/processed/predictions.csv")

@@ -19,7 +19,7 @@ FEATURES = ["rfh", "rfh_avg", "rfq", "r1h", "r3h", "r1q", "r3q",
             "season_sin", "season_cos", "nat_frac_anom"]
 SEED = 42   # fixed so every result in the notebook is reproducible
 
-df = pd.read_csv("data/features.csv", parse_dates=["date"]).sort_values(["date", "PCODE"])
+df = pd.read_csv("data/processed/features.csv", parse_dates=["date"]).sort_values(["date", "PCODE"])
 
 # ---------- Time-based split ----------
 # Train on 2002-2019, test on 2020-2024. The test years are never
@@ -104,5 +104,5 @@ print(coefs.round(3).to_string())
 out = df[["PCODE", "date", "split", "flooded"]].rename(columns={"flooded": "y_true"})
 out["rule_pred"] = ((df.rfh >= 50) & (df.rfq >= 200)).astype(int)
 out["logreg_prob"] = model.predict_proba(df[FEATURES])[:, 1]
-out.to_csv("data/predictions.csv", index=False)
-print("\nsaved data/predictions.csv")
+out.to_csv("data/processed/predictions.csv", index=False)
+print("\nsaved data/processed/predictions.csv")

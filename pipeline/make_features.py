@@ -19,7 +19,7 @@ import pandas as pd
 # information from this dekad or earlier - never the future.
 # ---------------------------------------------------------------
 
-rain = pd.read_csv("data/ken-rainfall-subnat-full.csv", parse_dates=["date"])
+rain = pd.read_csv("data/raw/ken-rainfall-subnat-full.csv", parse_dates=["date"])
 rain = rain[rain.adm_level == 2].copy()          # sub-counties only
 rain = rain.sort_values(["PCODE", "date"])       # required for lags to be correct
 
@@ -66,7 +66,7 @@ FEATURES = BASE + ["rfh_lag1", "rfh_lag2", "rfq_lag1",
 #           most often, rather than learn from rainfall.
 
 # ---------- Join to labels ----------
-labels = pd.read_csv("data/labels.csv", parse_dates=["date"])
+labels = pd.read_csv("data/processed/labels.csv", parse_dates=["date"])
 df = labels.merge(rain[["PCODE", "date"] + FEATURES], on=["PCODE", "date"], how="left")
 
 print("rows:", len(df), "| positives:", df.flooded.sum(),
@@ -78,5 +78,5 @@ print(df[FEATURES].isna().sum().to_string())
 print("\nmedian feature value, flooded vs not:")
 print(df.groupby("flooded")[FEATURES].median().T.round(2).to_string())
 
-df[["PCODE", "date", "flooded", "source"] + FEATURES].to_csv("data/features.csv", index=False)
-print("\nsaved data/features.csv")
+df[["PCODE", "date", "flooded", "source"] + FEATURES].to_csv("data/processed/features.csv", index=False)
+print("\nsaved data/processed/features.csv")

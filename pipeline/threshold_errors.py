@@ -19,8 +19,8 @@ FEATURES = ["rfh", "rfh_avg", "rfq", "r1h", "r3h", "r1q", "r3q",
             "season_sin", "season_cos", "nat_frac_anom"]
 SEED, C = 42, 0.001          # same settings train_logreg.py chose
 
-df = pd.read_csv("data/features.csv", parse_dates=["date"]).sort_values(["date", "PCODE"])
-pred = pd.read_csv("data/predictions.csv", parse_dates=["date"])
+df = pd.read_csv("data/processed/features.csv", parse_dates=["date"]).sort_values(["date", "PCODE"])
+pred = pd.read_csv("data/processed/predictions.csv", parse_dates=["date"])
 df = df.merge(pred[["PCODE", "date", "split", "logreg_prob", "rule_pred"]], on=["PCODE", "date"])
 train, test = df[df.split == "train"], df[df.split == "test"]
 
@@ -102,7 +102,7 @@ print(fa.date.dt.year.value_counts().sort_index().to_string())
 # concentrated in counties that flood from rain falling elsewhere:
 # Tana River and Garissa sit downstream on the Tana River, which is fed
 # by rain in the central highlands (Mt Kenya / Aberdares), not locally.
-names = pd.read_csv("data/kenya_counties.csv").set_index("admin1Pcode").admin1Name_en
+names = pd.read_csv("data/raw/kenya_counties.csv").set_index("admin1Pcode").admin1Name_en
 floods = floods.assign(county=floods.PCODE.str[:5].map(names))
 print("\nmiss rate by county (counties with the most test floods):")
 by_county = floods.groupby("county").alert.agg(floods="size", missed=lambda a: 1 - a.mean())

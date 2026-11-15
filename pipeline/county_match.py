@@ -1,6 +1,9 @@
 import re
 import pandas as pd
 
+from pathlib import Path
+ROOT = Path(__file__).resolve().parent.parent
+
 #_______________________________________________________________________________
 #Purpose of this script is as follows:
 #the 2 sources naming conventions are messed up in free text
@@ -12,8 +15,8 @@ import pandas as pd
 
 
 #official IEBC 2019 Boundaries (extraccted from the OCHA geodatabase)
-counties = pd.read_csv("data/kenya_counties.csv")  #47 counties
-subs = pd.read_csv("data/kenya_subcounties.csv")    #290 sub-counties
+counties = pd.read_csv(ROOT /"data/raw/kenya_counties.csv")  #47 counties
+subs = pd.read_csv(ROOT /"data/raw/kenya_subcounties.csv")    #290 sub-counties
 
 
 def norm(name):
@@ -103,12 +106,12 @@ if __name__ == "__main__":
     # NOT when make_labels.py imports functions from it.
 
     #---checking source 1, DesInventar (1 county per row)
-    di = pd.read_csv("data/DesInventar_Geocoded.csv", low_memory=False)
+    di = pd.read_csv(ROOT /"data/raw/DesInventar_Geocoded.csv", low_memory=False)
     di = di[di.Country == "Kenya"]
     print("DesInventar unmatched:", sorted({n for n in di.Adm1.dropna() if to_pcode(n) is None}))
 
     #---checking source 2: EM-DAT (free-text list of places)
-    em = pd.read_csv("data/EMDAT_Geocoded.csv", low_memory=False)
+    em = pd.read_csv(ROOT /"data/raw/EMDAT_Geocoded.csv", low_memory=False)
     em = em[(em.iso == "KEN") & (em["start year"] >= 2002)] #the labelled window
 
     bad = set()

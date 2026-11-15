@@ -21,7 +21,7 @@
 #its not seen as picking an easy one to beat
 import pandas as pd
 
-df = pd.read_csv("data/ken-rainfall-subnat-full.csv")
+df = pd.read_csv("data/raw/ken-rainfall-subnat-full.csv")
 nbi = df[df.PCODE == "KE047"].copy()
 
 nbi["rule_50mm"] = nbi["rfh"] >= 50

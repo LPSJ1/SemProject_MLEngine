@@ -1,6 +1,6 @@
 import calendar
 import pandas as pd
-from county_match import to_pcode, counties_in
+from pipeline.county_match import to_pcode, counties_in
 
 
 #-------------------------------------------------------------
@@ -29,7 +29,7 @@ END_OVERRIDES = {"2023-0721-KEN": pd.Timestamp("2023-11-11")}
 
 
 #-----dekad grid from rainfall data-------
-rain = pd.read_csv("data/ken-rainfall-subnat-full.csv", parse_dates=["date"])
+rain = pd.read_csv("data/raw/ken-rainfall-subnat-full.csv", parse_dates=["date"])
 rain = rain[(rain.adm_level == 2)                       #sub-counties only
             & rain.date.between(WINDOW_START, WINDOW_END)]
 dekads = sorted(rain.date.unique())
@@ -53,7 +53,7 @@ def month_end(year, month):
 records = []
 
 # ---------- Source 1: DesInventar - one county, one date per row ----------
-di = pd.read_csv("data/DesInventar_Geocoded.csv", low_memory=False)
+di = pd.read_csv("data/raw/DesInventar_Geocoded.csv", low_memory=False)
 di = di[di.Country == "Kenya"]
 for _, r in di.iterrows():
     county = to_pcode(r.Adm1)
@@ -68,7 +68,7 @@ for _, r in di.iterrows():
     records.append((county, start, end, "DesInventar"))
  
 # ---------- Source 2: EM-DAT - several counties per event ----------
-em = pd.read_csv("data/EMDAT_Geocoded.csv", low_memory=False)
+em = pd.read_csv("data/raw/EMDAT_Geocoded.csv", low_memory=False)
 em = em[(em.iso == "KEN") & (em["start year"] >= 2002)].dropna(subset=["location"])
 for _, r in em.iterrows():
     sy, sm = int(r["start year"]), int(r["start month"])
@@ -121,8 +121,8 @@ for cap in [None, 60, 30]:
           f"({100 * lab.flooded.mean():.2f}%)")
  
 labels = build_labels(MAX_EVENT_DAYS)
-labels.to_csv("data/labels.csv", index=False)
-print("\nsaved data/labels.csv with cap =", MAX_EVENT_DAYS)
+labels.to_csv("data/processed/labels.csv", index=False)
+print("\nsaved data/processed/labels.csv with cap =", MAX_EVENT_DAYS)
  
 # ---------- Sanity check: MAM 2024 in Nairobi (Lang'ata) ----------
 check = labels[(labels.PCODE == "KE047277")

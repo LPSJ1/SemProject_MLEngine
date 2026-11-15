@@ -142,8 +142,8 @@ def synthetic_predictions(seed: int = 42, n: int = 500) -> pd.DataFrame:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--input", type=Path, default=Path("data/predictions.csv"))
-    parser.add_argument("--features", type=Path, default=Path("data/features.csv"),
+    parser.add_argument("--input", type=Path, default=Path("data/processed/predictions.csv"))
+    parser.add_argument("--features", type=Path, default=Path("data/processed/features.csv"),
                         help="Feature file used to obtain rfh when predictions omit it.")
     parser.add_argument("--split", default="test", help="Dataset split to evaluate (default: test).")
     parser.add_argument("--threshold", type=float, default=0.5, help="Probability cutoff (default: 0.5).")
