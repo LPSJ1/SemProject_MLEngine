@@ -56,8 +56,26 @@ rain["season_cos"] = np.cos(2 * np.pi * dekad_of_year / 36)
 # identical to a single sub-county's rain gauge - this tells them apart.
 rain["nat_frac_anom"] = rain.groupby("date").rfq.transform(lambda s: (s >= 200).mean())
 
+
+#which river system each sub_county sits in (from basins.py)
+basins = pd.read_csv("data/processed/subcounty_basins.csv")
+rain = rain.merge(basins[["PCODE", "MAIN_BAS"]], on="PCODE", how="left")
+
+#average rfq of the OTHER sub-counties in the same river system, same dekad
+grp = rain.groupby(["MAIN_BAS", "date"]).rfq
+n_in_system = grp.transform("count")
+others_mean = (grp.transform("sum") - rain.rfq) / (n_in_system - 1)
+rain["basin_rfq"] = others_mean.where(n_in_system > 1).fillna(100)  # 100 = normal rain  
+
+#water takes time to travel, so also look back 1 and 2 dekads
+g = rain.groupby("PCODE")
+rain["basin_rfq_lag1"] = g.basin_rfq.shift(1)
+rain["basin_rfq_lag2"] = g.basin_rfq.shift(2)
+
 FEATURES = BASE + ["rfh_lag1", "rfh_lag2", "rfq_lag1",
                    "season_sin", "season_cos", "nat_frac_anom"]
+
+BASIN_CANDIDATES = ["basin_rfq", "basin_rfq_lag1", "basin_rfq_lag2"]
 
 # DELIBERATELY EXCLUDED:
 #  - year:  flood REPORTING collapsed after 2016, so year would teach
@@ -67,7 +85,7 @@ FEATURES = BASE + ["rfh_lag1", "rfh_lag2", "rfq_lag1",
 
 # ---------- Join to labels ----------
 labels = pd.read_csv("data/processed/labels.csv", parse_dates=["date"])
-df = labels.merge(rain[["PCODE", "date"] + FEATURES], on=["PCODE", "date"], how="left")
+df = labels.merge(rain[["PCODE", "date"] + FEATURES + BASIN_CANDIDATES], on=["PCODE", "date"], how="left")
 
 print("rows:", len(df), "| positives:", df.flooded.sum(),
       f"({100 * df.flooded.mean():.2f}%)")
@@ -78,5 +96,5 @@ print(df[FEATURES].isna().sum().to_string())
 print("\nmedian feature value, flooded vs not:")
 print(df.groupby("flooded")[FEATURES].median().T.round(2).to_string())
 
-df[["PCODE", "date", "flooded", "source"] + FEATURES].to_csv("data/processed/features.csv", index=False)
+df[["PCODE", "date", "flooded", "source"] + FEATURES +BASIN_CANDIDATES].to_csv("data/processed/features.csv", index=False)
 print("\nsaved data/processed/features.csv")
