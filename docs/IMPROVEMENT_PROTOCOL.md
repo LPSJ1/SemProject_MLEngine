@@ -61,13 +61,15 @@ I state this openly.
 | --- | --------------------------------- | --------------------------------------------------- |
 | 1   | Basin wetness feature             | Rejected: 0.178 vs 0.177 (run before this protocol was written) |
 | 2   | Strict upstream rain              | Rejected: no gain over baseline or shuffled control (run before this protocol was written) |
-| 3   | Long-record weights               | Mean 0.195 vs 0.177 (+10%), folds 0.12, 0.20, 0.23, 0.10, 0.33, better in 5/5. Kept under 9.1, which was written after a simulation had shown this result; fails the 17% rule in section 3, so weaker evidence. Recall 0.551 vs 0.514 at precision 0.170. |
+| 3   | Long-record weights               | Mean 0.195 vs 0.177 (+10%), folds 0.12, 0.20, 0.23, 0.10, 0.33, better in 5/5. Kept under 9.1 (sub-county unit; superseded by 9.2), which was written after a simulation had shown this result; fails the 17% rule in section 3, so weaker evidence. Recall 0.551 vs 0.514 at precision 0.170. |
 | 4   | County-level target (new unit)    | Adopted as the unit (9.2), not for its score. County baseline: mean 0.196, folds 0.12, 0.20, 0.24, 0.07, 0.35, lift 4.4x, recall 0.549 at precision 0.166 (47 counties, 38,916 rows, 3.97% flooded). Long-record weights at county level: mean 0.212 (+8%), folds 0.15, 0.21, 0.23, 0.10, 0.37, better in 4/5 (lost fold 3, 0.23 vs 0.24), recall 0.587. Rejected under 9.1, which needs 5/5. |
 | 5   | MJO features (ROMI)               | Rejected (county unit, rule 9.3). Mean 0.194 vs 0.196, folds 0.12, 0.19, 0.24, 0.08, 0.35, better in 2/5. Five shuffled copies scored 0.192 to 0.203, so it did not beat them (one shuffle scored higher than the real feature). Rain by MJO phase differs (wetter in phases 4-6, drier in 7-8, both rainy seasons, 2002-2019), but the model already sees the rain itself, so the MJO adds nothing. |
-| 6   | Daily rain intensity              | Not run: source mismatch. CHIRPS v3 pentads (the only version found) match our HDX rainfall in total (median ratio 0.99) but not dekad by dekad (correlation 0.919 in 2002, below the 0.98 gate; worst sub-county 0.68). My polygon averaging reproduces v3's own dekad files exactly (correlation 1.0), so the gap is the source, not the code. Mixing the two would teach the model the gap between products. The gate was not relaxed. Future work: rebuild the whole pipeline on one CHIRPS version. |
+| 6   | Daily rain intensity              | Not run: source mismatch. CHIRPS v3 pentads (the only version found) match our HDX rainfall in total (median ratio 0.99) but not dekad by dekad (correlation 0.919 in 2002, below the 0.98 gate; worst sub-county 0.68). My polygon averaging reproduces v3's own dekad files exactly (correlation 1.0), so the gap is the source, not the code. Mixing the two would teach the model the gap between products. The gate was not relaxed. Future work: rebuild the whole pipeline on one CHIRPS version, which will be needed anyway because production of CHIRPS v2 ends after December 2026 (Climate Hazards Center, chc.ucsb.edu/data/chirps). |
 | 7   | False-alarm audit                 | Not run, listed as future work                      |
 
 Many experiments means one of them can look good by luck. The guard against this is that the final model is run on 2020-2024 only once.
+
+Final configuration: county unit, 17 features, no weights, threshold re-picked by section 4.
 
 ## 9. Amendments
 
@@ -88,7 +90,7 @@ From this point the weighting is part of the current baseline. Later experiments
 
 ### 9.2 Change of unit: county level (17/11/2026, written AFTER a simulation of this experiment)
 
-A simulation run before this amendment was written found a county PR-AUC of about 0.196 without weights and about 0.212 with them. So this amendment is not pre-registered either. The county unit is adopted because it matches the labels and the app, not because of its score.
+A simulation run before this amendment was written found a county PR-AUC of about 0.196 without weights and about 0.212 with them. So this amendment is not pre-registered either.
 
 The flood records are county-level (one county report is copied onto every sampled sub-county in that county), and the app will report per county. So the model is also tried with one row per county per dekad. This is a change of unit, not a feature experiment, and it is adopted because it matches the labels and the app, not because of its score.
 

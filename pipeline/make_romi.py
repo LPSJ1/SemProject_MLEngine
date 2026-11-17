@@ -18,6 +18,12 @@ r = pd.read_csv(ROOT / "data/raw/romi.cpcolr.1x.txt", sep=r"\s+", header=None,
                 names=["year", "month", "day", "hour", "romi1", "romi2", "amp"])
 r["date"] = pd.to_datetime(r[["year", "month", "day"]])
 
+# NOAA files sometimes mark missing days with a code like 999 or -999. If any
+# were here the dekad means would be wrong, so stop instead of averaging them.
+# (Checked: this file has none, the largest value is below 4.)
+assert r[["romi1", "romi2", "amp"]].abs().max().max() < 100, "missing-value code found"
+assert not r[["romi1", "romi2", "amp"]].isna().any().any(), "missing values found"
+
 # snap each day to the start of its dekad: 1st, 11th or 21st
 day = r.date.dt.day
 r["dekad"] = r.date - pd.to_timedelta(day - day.map(lambda d: 1 if d <= 10 else 11 if d <= 20 else 21), unit="D")
