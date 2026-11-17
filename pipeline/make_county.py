@@ -32,6 +32,13 @@ out = out.reset_index()
 out["weight"] = 1.0
 out.loc[out.record_days > 30, "weight"] = 0.1
 
+# candidate MJO features (kept OUT of the baseline; used only through --extra)
+romi = ROOT / "data/processed/romi_dekad.csv"
+if romi.exists():
+    out = out.merge(pd.read_csv(romi, parse_dates=["date"])
+                    [["date", "romi1", "romi2", "romi1_lag1", "romi2_lag1"]],
+                    on="date", how="left")
+
 out.to_csv(ROOT / "data/processed/county_features.csv", index=False)
 
 print("counties:", out.county.nunique(), "| rows:", len(out),

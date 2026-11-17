@@ -97,3 +97,13 @@ The flood records are county-level (one county report is copied onto every sampl
 - The plain and combined rules are recomputed at county level using the max sub-county rain, and the threshold is picked again with the section 4 rule.
 - Weights at county level use the shortest record touching the county dekad, as in 9.1. They are judged against the county baseline with the 9.1 rule.
 - Results are compared with lift (PR-AUC divided by the base rate), because the base rates differ.
+
+### 9.3 How the shuffled copy test works (17/11/2026, written BEFORE the first feature experiment at county level was run)
+
+Section 3 says a new feature must beat a shuffled copy of itself. This fixes what that means, before any county feature result exists:
+
+- The feature's values are mixed up between dates, so they no longer match the rain they were measured with. If a feature has the same value for every county in a dekad (like the MJO), whole dekads are shuffled together, so that structure stays.
+- Five shuffled copies are made (seeds 1 to 5), each run through the same cross-validation.
+- The real feature must have a higher mean PR-AUC than **all five** shuffled copies, and also pass the section 3 rule (17% and 4 of 5 folds). Failing either means rejected.
+- The baseline for the MJO experiment is the county model without weights (0.196), because the weights were rejected at county level.
+- The only thing known about the MJO experiment beforehand is a guess that it would probably be null. No score had been seen.

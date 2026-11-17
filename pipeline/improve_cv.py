@@ -61,6 +61,21 @@ def cv_run(train, features, label_col="flooded", weight_col=None,
     return fold_scores, pd.concat(oof)
 
 
+def shuffled(train, cols, seed):
+    # a copy where the new feature's values are mixed up, so they no longer
+    # match their true dates. If the feature is the same for every row of a
+    # dekad (like the MJO), shuffle whole dekads, so that structure is kept.
+    t = train.copy()
+    rng = np.random.default_rng(seed)
+    if (t.groupby("date")[cols].nunique() == 1).all().all():
+        v = t.groupby("date")[cols].first()
+        v = pd.DataFrame(v.values[rng.permutation(len(v))], index=v.index, columns=cols)
+        t = t.drop(columns=cols).merge(v.reset_index(), on="date", how="left")
+    else:
+        t[cols] = t[cols].values[rng.permutation(len(t))]
+    return t
+
+
 def recall_at_rule_precision(oof):
     # section 4: highest recall whose precision >= the combined rule's precision
     target = oof.flooded[oof.alert].mean()
@@ -82,6 +97,8 @@ def main():
     # is not credited with the gain of something already kept (e.g. the weights)
     ap.add_argument("--base-extra", nargs="*", default=[], help="features already kept")
     ap.add_argument("--base-weight-col", default=None, help="weights already kept")
+    ap.add_argument("--shuffle", type=int, default=0,
+                    help="number of shuffled-feature controls (protocol 9.3)")
     ap.add_argument("--unit", choices=["subcounty", "county"], default="subcounty")
     ap.add_argument("--rule", choices=["general", "weighting"], default="general",
                     help="general = protocol section 3, weighting = section 9.1")
@@ -113,6 +130,20 @@ def main():
     # the bar comes from the baseline that was just run (section 3: "current baseline")
     needed = np.mean(base) * (1 + gain)
     keep = np.mean(exp) >= needed and wins >= folds_needed
+
+    # shuffled control (protocol 9.3): the real feature must beat ALL shuffled copies
+    if a.shuffle and a.extra:
+        shuf = []
+        for seed in range(1, a.shuffle + 1):
+            s, _ = cv_run(shuffled(train, a.extra, seed), start + a.base_extra + a.extra,
+                          a.label_col, a.weight_col, rule_cols)
+            shuf.append(np.mean(s))
+        print("\nshuffled controls, mean PR-AUC:", ", ".join(f"{x:.3f}" for x in shuf))
+        beats = np.mean(exp) > max(shuf)
+        print(f"real {np.mean(exp):.3f} vs best shuffle {max(shuf):.3f} -> "
+              f"{'beats all shuffles' if beats else 'does NOT beat all shuffles'}")
+        keep = keep and beats
+
     print(f"\n[{a.rule} rule] needed mean >= {needed:.3f}; got {np.mean(exp):.3f}; "
           f"better in {wins}/5 folds (need {folds_needed}) -> {'KEEP' if keep else 'REJECT'}")
 
