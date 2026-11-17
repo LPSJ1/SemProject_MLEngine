@@ -22,10 +22,10 @@ Written on 17/11/2026; before running any improvement experiment. This file is c
 
 A change is kept only if BOTH are true:
 
-1. its mean PR-AUC is at least 17% higher than 0.1777, meaning at least 0.207 and
+1. its mean PR-AUC is at least 17% higher than 0.177, meaning at least 0.207 and
 2. it is better in at least 4 of the 5 folds.
 
-I chose 17% because my fold scores vary a lot( 0.08 to 0.31), so a small gain could be luck. 17% (0.03) is clearly larger than the noise but small enough to be a real improvement.
+I chose 17% because my fold scores vary a lot (0.08 to 0.31), so a small gain could be luck. 17% (0.03) is clearly larger than the noise but small enough to be a real improvement.
 
 Anything else is rejected. We still write down the result.
 Features must also beat a shuffled copy of themselves, so we know they are not just memorising places.
