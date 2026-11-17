@@ -55,6 +55,24 @@ I allow 1 dekad (10 days) either side because the flood records have approximate
 The final model is run on 2020-2024 once, at the end. The test years already gave us ideas: the baseline error analysis found that Tana River and Garissa floods were missed, which led to the upstream experiment.
 I state this openly.
 
+### Final run result (17/11/2026, run once, county unit, 2020-2024)
+
+Threshold 0.646, picked on the training years with the section 4 rule (the combined rule's precision there was 0.166). Test: 8,460 county dekads, 285 flooded (base rate 0.034, lower than the 0.044 in the training years).
+
+| | Alerts | Precision | Recall | Events caught | Credible alerts |
+|---|---|---|---|---|---|
+| Plain rule | 2,291 | 0.081 | 0.653 | 69 of 79 (87%) | 80 of 939 (8.5%) |
+| Combined rule | 733 | 0.106 | 0.274 | 51 of 79 (65%) | 59 of 550 (10.7%) |
+| Model | 1,903 | 0.086 | 0.572 | 62 of 79 (78%) | 61 of 452 (13.5%) |
+
+Model PR-AUC 0.116, which is 3.4 times the base rate (cross-validation gave 4.4 times).
+
+What this shows, without spin:
+- The model catches far more than the combined rule (recall 0.572 against 0.274, 62 events against 51), but its precision on the test years (0.086) is below that rule's (0.106). The threshold was meant to match the combined rule's precision, and it did on the training years (0.166) but not on the test years. Precision fell for all three methods in 2020-2024.
+- Against the plain rule the gain is small: slightly higher precision (0.086 against 0.081), 17% fewer alerts, and more of its alert episodes are near a real flood (13.5% against 8.5%). But it catches fewer floods (recall 0.572 against 0.653) and fewer events (78% against 87%).
+- The lift is lower on the test years than in cross-validation. One likely reason is that fewer floods were recorded after 2016 (the base rate is lower), but I have not tested that.
+- Most alerts are still not near a recorded flood (about 86% of the model's alert episodes). Many of those may be floods that were never recorded, which the false-alarm audit would have measured. That was not done.
+
 ## 8. Experiments
 
 | #   | Experiment                        | Result                                              |
@@ -66,6 +84,7 @@ I state this openly.
 | 5   | MJO features (ROMI)               | Rejected (county unit, rule 9.3). Mean 0.194 vs 0.196, folds 0.12, 0.19, 0.24, 0.08, 0.35, better in 2/5. Five shuffled copies scored 0.192 to 0.203, so it did not beat them (one shuffle scored higher than the real feature). Rain by MJO phase differs (wetter in phases 4-6, drier in 7-8, both rainy seasons, 2002-2019), but the model already sees the rain itself, so the MJO adds nothing. |
 | 6   | Daily rain intensity              | Not run: source mismatch. CHIRPS v3 pentads (the only version found) match our HDX rainfall in total (median ratio 0.99) but not dekad by dekad (correlation 0.919 in 2002, below the 0.98 gate; worst sub-county 0.68). My polygon averaging reproduces v3's own dekad files exactly (correlation 1.0), so the gap is the source, not the code. Mixing the two would teach the model the gap between products. The gate was not relaxed. Future work: rebuild the whole pipeline on one CHIRPS version, which will be needed anyway because production of CHIRPS v2 ends after December 2026 (Climate Hazards Center, chc.ucsb.edu/data/chirps). |
 | 7   | False-alarm audit                 | Not run, listed as future work                      |
+| 8   | Final run on 2020-2024            | Run once. Model PR-AUC 0.116 (3.4x base rate), precision 0.086, recall 0.572, events caught 78%, credible alerts 13.5%. See section 7. |
 
 Many experiments means one of them can look good by luck. The guard against this is that the final model is run on 2020-2024 only once.
 
