@@ -73,6 +73,8 @@ What this shows, without spin:
 - The lift is lower on the test years than in cross-validation. One likely reason is that fewer floods were recorded after 2016 (the base rate is lower), but I have not tested that.
 - Most alerts are still not near a recorded flood (about 86% of the model's alert episodes). Many of those may be floods that were never recorded, which the false-alarm audit would have measured. That was not done.
 
+Descriptive chart, made after the single run and not used to change the threshold (`docs/final_pr_curve_2020_2024.png`, made by `exploration/final_pr_curve.py`, results in `docs/final_results_2020_2024.csv`). It plots the model's precision-recall curve with each rule as one point. The combined rule's point is just below the curve: at that rule's recall (0.274) the model reaches a precision of 0.114 against the rule's 0.106. The plain rule's point is not below it: at that rule's recall (0.653) the model reaches 0.076 against the rule's 0.081. So over the whole range of thresholds the model beats the combined rule by a small margin and does not beat the plain rule. The model's curve and the two rules are close together everywhere.
+
 ## 8. Experiments
 
 | #   | Experiment                        | Result                                              |
