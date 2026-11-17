@@ -60,7 +60,7 @@ I state this openly.
 | --- | --------------------------------- | --------------------------------------------------- |
 | 1   | Basin wetness feature             | Rejected: 0.178 vs 0.177 (run before this protocol was written) |
 | 2   | Strict upstream rain              | Rejected: no gain over baseline or shuffled control (run before this protocol was written) |
-| 3   | Long-record weights               | Pending                                             |
+| 3   | Long-record weights               | Mean 0.195 vs 0.177 (+10%), folds 0.12, 0.20, 0.23, 0.10, 0.33, better in 5/5. Kept under 9.1; fails the 17% rule in section 3. Recall 0.551 vs 0.514 at precision 0.170. |
 | 4   | County-level target (new unit)    | Pending                                             |
 | 5   | MJO features                      | Pending                                             |
 | 6   | Daily rain intensity              | Pending                                             |
