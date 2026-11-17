@@ -22,18 +22,18 @@ Written on 17/11/2026; before running any improvement experiment. This file is c
 
 A change is kept only if BOTH are true:
 
-1. its mean PR-AUC is at least 17% higher than 0.177, meaning at least 0.207 and
-2. it is better in at least 4 of the 5 folds.
+1. its mean PR-AUC is at least 17% higher than the current baseline (0.177 at sub-county level, so at least 0.207), and
+2. it is better in at least 4 of the 5 folds. Each fold is compared with the baseline on the same fold, because both models see the same years.
 
 I chose 17% because my fold scores vary a lot (0.08 to 0.31), so a small gain could be luck. 17% (0.03) is clearly larger than the noise but small enough to be a real improvement.
 
 Anything else is rejected. We still write down the result.
-Features must also beat a shuffled copy of themselves, so we know they are not just memorising places.
+This applies to feature experiments: a new feature must also beat a shuffled copy of itself (its values permuted across the training rows), so we know it is not just memorising places.
 If it doesn't, it's rejected even if the PR-AUC gain passes.
 
 ## 4. How we choose the alert threshold
 
-Using out-of-fold predictions on the training years, we pick the threshold with the highest recall whose precision is at least the combined rule's precision. The test years are never used to pick it.
+Using out-of-fold predictions on the training years, we pick the threshold with the highest recall whose precision is at least the combined rule's precision. On the training years that target is 0.170, and it gives a threshold of 0.669. The test years are never used to pick it.
 
 ## 5. Labels
 
@@ -42,9 +42,10 @@ Every experiment is scored against the original labels. Floods found in the fals
 ## 6. Event metric
 
 - An event is a run of consecutive flooded dekads in one sub-county.
-- An event is detected if the model alerts within 1 dekad of it.
-- A false alarm episode is an alert that is not within 1 dekad of any event.
-  We report both, because alerting everywhere would detect every event.
+- An alert episode is a run of consecutive alert dekads in one sub-county.
+- Events caught = events with an alert within 1 dekad of them, divided by all events.
+- Credible alerts = alert episodes within 1 dekad of an event, divided by all alert episodes.
+  We report both, because alerting everywhere would catch every event.
 
 I allow 1 dekad (10 days) either side because the flood records have approximate dates, so a correct alert could land in the next or previous dekad. More than that would let unrelated alerts count as hits.
 
@@ -57,10 +58,27 @@ I state this openly.
 
 | #   | Experiment                        | Result                                              |
 | --- | --------------------------------- | --------------------------------------------------- |
-| 1   | Basin wetness feature             | Rejected: 0.178 vs 0.177                            |
-| 2   | Strict upstream rain              | Rejected: no gain over baseline or shuffled control |
-| 3   | False-alarm audit                 |                                                     |
-| 4   | Weights for weak reporting years  |                                                     |
-| 5   | Date-precision weights            |                                                     |
-| 6   | Persistence, neighbour rain       |                                                     |
-| 7   | Interactions, boosting, averaging |                                                     |
+| 1   | Basin wetness feature             | Rejected: 0.178 vs 0.177 (run before this protocol was written) |
+| 2   | Strict upstream rain              | Rejected: no gain over baseline or shuffled control (run before this protocol was written) |
+| 3   | Long-record weights               | Pending                                             |
+| 4   | County-level target (new unit)    | Pending                                             |
+| 5   | MJO features                      | Pending                                             |
+| 6   | Daily rain intensity              | Pending                                             |
+| 7   | False-alarm audit                 | Not run, listed as future work                      |
+
+Many experiments means one of them can look good by luck. The guard against this is that the final model is run on 2020-2024 only once.
+
+## 9. Amendments
+
+Any rule change made after seeing results is listed here with the date and the reason.
+
+### 9.1 Keep rule for weighting experiments (17/11/2026, written before they are run)
+
+Weights change how much each training row counts. They add no new features, so they cannot memorise places, and the shuffled copy test does not apply to them. A 17% gain is too strict for that kind of change, so for weighting experiments only the rule is:
+
+1. its mean PR-AUC is at least 5% higher than the baseline (at least 0.186), and
+2. it is better in all 5 of the 5 folds. If the weights did nothing, the chance of winning every fold by luck is 1 in 32.
+
+Only one weight value is tested for the keep decision: 0.1 for positives that come only from records longer than 30 days, and 1 for everything else. Other values may be reported as extra information, but they are not used to choose the weight.
+
+The gain from this experiment was estimated before it was run, not measured. I am saying so here so the 5% rule is not mistaken for one fitted to a result.

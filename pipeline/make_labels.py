@@ -92,23 +92,32 @@ def build_labels(cap):
     hits = []
     for e in events.itertuples():
         end = e.end if cap is None else min(e.end, e.start + pd.Timedelta(days=cap))
+        length = (end - e.start).days   #record length after the cap, used for weights
         first, last = dekad_start(e.start), dekad_start(end)
         touched = [d for d in dekads if first <= d <= last]
         # A county-level record labels EVERY sampled sub-county in that county
         for pcode in subcounties:
             if pcode[:5] == e.county:
-                hits += [(pcode, d, e.source) for d in touched]
-    hits = pd.DataFrame(hits, columns=["PCODE", "date", "source"])
- 
+                hits += [(pcode, d, e.source, length) for d in touched]
+    hits = pd.DataFrame(hits, columns=["PCODE", "date", "source", "days"])
+
     # Union across sources: one flood row per (sub-county, dekad), however
     # many records mention it. This is what makes duplicates harmless.
-    pos = (hits.groupby(["PCODE", "date"])["source"]
-               .agg(lambda s: ";".join(sorted(set(s)))).reset_index())
+    # record_days = the SHORTEST record touching the row (longer records
+    # describe a whole wet season, so their dates are less precise).
+    pos = (hits.groupby(["PCODE", "date"])
+               .agg(source=("source", lambda s: ";".join(sorted(set(s)))),
+                    record_days=("days", "min"))
+               .reset_index())
  
     grid = pd.MultiIndex.from_product([subcounties, dekads],
                                       names=["PCODE", "date"]).to_frame(index=False)
     labels = grid.merge(pos, on=["PCODE", "date"], how="left")
     labels["flooded"] = labels.source.notna().astype(int)
+    #training weight: floods that only come from records longer than 30 days
+    #count 0.1, everything else counts 1 (see section 9.1 of the protocol)
+    labels["weight"] = 1.0
+    labels.loc[labels.record_days > 30, "weight"] = 0.1
     return labels
  
  

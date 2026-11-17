@@ -80,6 +80,9 @@ def main():
         target, thr, rec = recall_at_rule_precision(oof)
         print(f"{name:<11} mean PR-AUC {np.mean(s):.3f} | "
               f"folds {', '.join(f'{x:.2f}' for x in s)} | std {np.std(s):.3f}")
+        # lift = how many times better than guessing (the base rate)
+        lift = np.mean(s) / oof.flooded.mean()
+        print(f"{'':<11} lift {lift:.1f}x over the base rate {oof.flooded.mean():.3f}")
         print(f"{'':<11} recall {rec:.3f} at precision >= {target:.3f}"
               f" (threshold {thr})")
 

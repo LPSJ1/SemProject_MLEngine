@@ -115,5 +115,5 @@ print(df[FEATURES].isna().sum().to_string())
 print("\nmedian feature value, flooded vs not:")
 print(df.groupby("flooded")[FEATURES].median().T.round(2).to_string())
 
-df[["PCODE", "date", "flooded", "source"] + FEATURES +BASIN_CANDIDATES + STRICT_CANDIDATES].to_csv("data/processed/features.csv", index=False)
+df[["PCODE", "date", "flooded", "source", "record_days", "weight"] + FEATURES +BASIN_CANDIDATES + STRICT_CANDIDATES].to_csv("data/processed/features.csv", index=False)
 print("\nsaved data/processed/features.csv")
