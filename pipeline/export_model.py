@@ -41,6 +41,8 @@ from pipeline.improve_cv import COUNTY_BASE, cv_run, make_model
 
 ROOT = Path(__file__).resolve().parent.parent  # repo root
 THRESHOLD = 0.646  # alert cut-off, picked on the training years (protocol)
+MIN_STEP_ROWS = 200  # every calibration step must rest on at least this many rows
+DISPLAY_STEP = 0.05  # the chance shown to users is rounded to the nearest 5%
 
 # Plain-language groups, used to explain WHY a county is at risk.
 # Every one of the 17 features must be in exactly one group.
@@ -185,11 +187,96 @@ def calibrate(prob, model):
     return y0 + (y1 - y0) * (prob - x0) / (x1 - x0)
 
 
+def display_chance(prob, model):
+    """The calibrated chance rounded to the nearest 5% (0.05 steps).
+    This is the ONLY chance number users may see. Anything under 2.5%
+    rounds to 0, so the app should show that as "under 5%", not "0%"."""
+    step = model["calibration"]["display_rounding"]
+    c = calibrate(prob, model)
+    return round(min(1.0, math.floor(c / step + 0.5) * step), 2)
+
+
 def group_contributions(features, model):
     """Sum of coef*z per group. Positive = pushes risk UP, negative = DOWN.
     This is what the explainable-AI part of the app shows."""
     c = _contributions(features, model)
     return {g: sum(c[f] for f in fs) for g, fs in model["groups"].items()}
+
+
+# ---------------------------------------------------------------------------
+# 2b. Calibration table: isotonic regression, with small steps merged
+# ---------------------------------------------------------------------------
+def _merge(a, b):
+    """Join two neighbouring steps. A step = [rows, floods, lowest raw prob, highest raw prob]."""
+    return [a[0] + b[0], a[1] + b[1], min(a[2], b[2]), max(a[3], b[3])]
+
+
+def build_calibration(oof, min_rows=MIN_STEP_ROWS):
+    """Raw probability -> real flood rate, as a lookup table.
+
+    1. Isotonic regression finds a staircase: each step is a range of raw
+       probabilities that share one flood rate, and the rate never goes down
+       as the raw probability goes up.
+    2. Plain isotonic can create steps resting on a handful of rows (the top
+       one had 6), whose rate is mostly luck. So any step with fewer than
+       `min_rows` rows is merged into the neighbour with the closest rate,
+       and its rate becomes the pooled rate of the joined rows.
+    3. Merging can break the "never goes down" rule, so neighbours that are
+       out of order are pooled too (the pool-adjacent-violators idea).
+    4. Repeat until every step has at least `min_rows` rows.
+    """
+    o = oof.sort_values("prob")
+    prob, flood = o.prob.values, o.flooded.values
+    fit = IsotonicRegression(out_of_bounds="clip").fit(prob, flood).predict(prob)
+
+    # starting steps = runs of equal isotonic value
+    steps, start = [], 0
+    for i in range(1, len(prob) + 1):
+        if i == len(prob) or fit[i] != fit[start]:
+            steps.append([i - start, int(flood[start:i].sum()), prob[start], prob[i - 1]])
+            start = i
+
+    def rate(s):
+        return s[1] / s[0]
+
+    while len(steps) > 1:
+        small = [i for i, s in enumerate(steps) if s[0] < min_rows]
+        if not small:
+            break
+        i = min(small, key=lambda k: steps[k][0])  # the smallest step first
+        near = [j for j in (i - 1, i + 1) if 0 <= j < len(steps)]
+        j = min(near, key=lambda k: abs(rate(steps[k]) - rate(steps[i])))  # closest rate
+        a, b = sorted((i, j))
+        steps[a:b + 1] = [_merge(steps[a], steps[b])]
+        k = 0  # fix any neighbours now out of order
+        while k < len(steps) - 1:
+            if rate(steps[k]) > rate(steps[k + 1]):
+                steps[k:k + 2] = [_merge(steps[k], steps[k + 1])]
+                k = max(k - 1, 0)
+            else:
+                k += 1
+
+    # The lookup table: each step is flat from its lowest to its highest raw
+    # probability; between two steps the value moves in a straight line.
+    xs, ys = [], []
+    for s in steps:
+        for x in sorted({float(s[2]), float(s[3])}):
+            xs.append(x)
+            ys.append(rate(s))
+    return {
+        "method": f"isotonic regression, steps with fewer than {min_rows} rows merged "
+                  "into their neighbours (pool-adjacent-violators)",
+        "fitted_on": f"out-of-fold predictions of the 2002-2019 time-series CV "
+                     f"(5 folds, {len(oof)} county dekads)",
+        "min_rows_per_step": min_rows,
+        "use": "chance = linear interpolation of y over x; below x[0] -> y[0], "
+               "above x[-1] -> y[-1]. Then round to the nearest display_rounding.",
+        "display_rounding": DISPLAY_STEP,
+        "steps": [{"rows": s[0], "floods": s[1], "raw_from": round(float(s[2]), 4),
+                   "raw_to": round(float(s[3]), 4), "chance": round(rate(s), 4)} for s in steps],
+        "x": xs,  # raw probability
+        "y": ys,  # calibrated chance
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -218,17 +305,9 @@ def main():
     # Isotonic regression learns the real flood rate for each raw value.
     # It is fitted ONLY on out-of-fold predictions: for each CV fold the
     # model predicts dekads it was not trained on. 2002-2019 only.
+    # Steps resting on fewer than MIN_STEP_ROWS rows are merged (see above).
     _, oof = cv_run(train, COUNTY_BASE, rule_cols=("rfh_max", "rfq_max"))
-    iso = IsotonicRegression(out_of_bounds="clip").fit(oof.prob, oof.flooded)
-    calibration = {
-        "method": "isotonic regression (sklearn, out_of_bounds=clip)",
-        "fitted_on": f"out-of-fold predictions of the 2002-2019 time-series CV "
-                     f"(5 folds, {len(oof)} county dekads)",
-        "use": "chance = linear interpolation of y over x; below x[0] -> y[0], "
-               "above x[-1] -> y[-1]",
-        "x": [float(v) for v in iso.X_thresholds_],  # raw probability
-        "y": [float(v) for v in iso.y_thresholds_],  # calibrated chance
-    }
+    calibration = build_calibration(oof)
 
     model = {
         "version": 1,
@@ -271,13 +350,23 @@ def main():
     print(f"\nlargest difference over 3000 rows: {worst:.2e}")
     assert worst < 5e-4, "score() does not match sklearn to 3 decimal places"
 
-    # ---- check 3: calibrate() must match sklearn's isotonic predict ----
+    # ---- check 3: the calibration table is sound ----
+    steps = calibration["steps"]
+    assert all(s["rows"] >= MIN_STEP_ROWS for s in steps), "a step has too few rows"
+    chances = [s["chance"] for s in steps]
+    assert chances == sorted(chances), "chance goes down somewhere"
+    assert all(b > a for a, b in zip(calibration["x"], calibration["x"][1:])), "x not increasing"
     grid = np.concatenate([sk_big, np.linspace(0, 1, 501)])  # real + edge values
-    iso_err = max(abs(iso.predict([p])[0] - calibrate(p, model)) for p in grid[:800])
-    print(f"calibrate() vs sklearn isotonic: largest difference {iso_err:.2e}")
-    assert iso_err < 1e-9, "calibrate() does not match sklearn"
-    for p in (0.3, 0.5, model["threshold"], 0.8, 0.95):
-        print(f"  raw {p:.3f} -> calibrated chance {calibrate(p, model):.3f}")
+    interp_err = max(abs(np.interp(p, calibration["x"], calibration["y"]) - calibrate(p, model))
+                     for p in grid[:800])
+    print(f"\ncalibration: {len(steps)} steps, every one with >= {MIN_STEP_ROWS} rows;"
+          f" calibrate() vs numpy interp: {interp_err:.1e}")
+    assert interp_err < 1e-12
+    print("  rows  floods  raw range        chance")
+    for s in steps:
+        print(f"  {s['rows']:5d} {s['floods']:6d}  {s['raw_from']:.3f}-{s['raw_to']:.3f}    {s['chance']:.3f}")
+    for p in (0.3, 0.5, model["threshold"], 0.8, 0.95, 0.999):
+        print(f"  raw {p:.3f} -> chance {calibrate(p, model):.3f} -> shown as {display_chance(p, model):.2f}")
     print(f"  base rate of flooded county dekads in training: {train.flooded.mean():.3f}")
 
     out = Path(a.out)
