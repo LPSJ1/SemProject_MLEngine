@@ -46,7 +46,11 @@ rain["rfq_lag1"] = g.rfq.shift(1)
 # Dekad of year runs 1..36. Plain numbers would tell the model dekad 36
 # (late Dec) is far from dekad 1 (early Jan) - they're neighbours.
 # Sine/cosine wrap the year into a circle so Dec sits next to Jan.
-dekad_of_year = (rain.date.dt.month - 1) * 3 + (rain.date.dt.day // 10).clip(upper=2) + 1
+# Days 1-10 -> 1st dekad of the month, 11-20 -> 2nd, 21-end -> 3rd. (Keep in
+# sync with pipeline/dekad.py, which is unit-tested. The old day // 10 put
+# days 10 and 20 in the next dekad; the data only has the 1st/11th/21st, so
+# the features did not change, but the live engine uses every day.)
+dekad_of_year = (rain.date.dt.month - 1) * 3 + ((rain.date.dt.day - 1) // 10).clip(upper=2) + 1
 rain["season_sin"] = np.sin(2 * np.pi * dekad_of_year / 36)
 rain["season_cos"] = np.cos(2 * np.pi * dekad_of_year / 36)
 

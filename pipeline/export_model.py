@@ -37,6 +37,7 @@ import numpy as np
 import pandas as pd
 from sklearn.isotonic import IsotonicRegression
 
+from pipeline.dekad import dekad_of_year  # days 1-10 / 11-20 / 21-end; unit-tested
 from pipeline.improve_cv import COUNTY_BASE, cv_run, make_model
 
 ROOT = Path(__file__).resolve().parent.parent  # repo root
@@ -106,12 +107,6 @@ def git_source():
     if git("status", "--porcelain", "--untracked-files=no"):
         h += "-dirty"
     return f"SemProject_MLEngine@{h}"
-
-
-def dekad_of_year(dates):
-    """1..36: three dekads per month (days 1-10, 11-20, 21-end).
-    Same formula as pipeline/make_features.py, so the numbers line up."""
-    return (dates.dt.month - 1) * 3 + (dates.dt.day // 10).clip(upper=2) + 1
 
 
 # ---------------------------------------------------------------------------
@@ -322,7 +317,15 @@ def main():
         "coefficients": [float(x) for x in lr.coef_[0]],
         "intercept": float(lr.intercept_[0]),
         "groups": GROUPS,
-        "dekad_of_year": "1..36 = (month-1)*3 + (day//10, max 2) + 1; list index = dekad-1",
+        "dekad_of_year": "1..36 = (month-1)*3 + part, where part = 1 for days 1-10, "
+                         "2 for days 11-20, 3 for day 21 to the end of the month "
+                         "(part = min((day-1)//10, 2) + 1); list index = dekad-1",
+        # The lowest and highest value of each of the 17 features in the
+        # training years (2002-2019). The app WARNS (does not reject) when
+        # a value is outside this range: the model has never seen it, so the
+        # result is an extrapolation.
+        "training_range": {f: {"min": float(train[f].min()), "max": float(train[f].max())}
+                           for f in COUNTY_BASE},
         "app_notes": APP_NOTES,
         "calibration": calibration,
         "normals": build_normals(),
