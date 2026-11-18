@@ -26,6 +26,7 @@ Output:                   export/model.json
 """
 
 import argparse
+import bisect
 import datetime
 import json
 import math
@@ -34,8 +35,9 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+from sklearn.isotonic import IsotonicRegression
 
-from pipeline.improve_cv import COUNTY_BASE, make_model
+from pipeline.improve_cv import COUNTY_BASE, cv_run, make_model
 
 ROOT = Path(__file__).resolve().parent.parent  # repo root
 THRESHOLD = 0.646  # alert cut-off, picked on the training years (protocol)
@@ -168,6 +170,21 @@ def score(features, model):
     return _sigmoid(logit)
 
 
+def calibrate(prob, model):
+    """Turn the model's raw number into a calibrated chance (0..1) with a
+    lookup table: find where `prob` sits between two table points and
+    interpolate in a straight line. Outside the table we clip to the ends.
+    The app does the same with model["calibration"]["x"] / ["y"]."""
+    xs, ys = model["calibration"]["x"], model["calibration"]["y"]
+    if prob <= xs[0]:
+        return ys[0]
+    if prob >= xs[-1]:
+        return ys[-1]
+    i = bisect.bisect_right(xs, prob)  # first table point above prob
+    x0, x1, y0, y1 = xs[i - 1], xs[i], ys[i - 1], ys[i]
+    return y0 + (y1 - y0) * (prob - x0) / (x1 - x0)
+
+
 def group_contributions(features, model):
     """Sum of coef*z per group. Positive = pushes risk UP, negative = DOWN.
     This is what the explainable-AI part of the app shows."""
@@ -195,6 +212,24 @@ def main():
     scaler = pipe.named_steps["standardscaler"]
     lr = pipe.named_steps["logisticregression"]
 
+    # ---- calibration ----
+    # The raw probability is inflated by class_weight="balanced" (flood
+    # dekads are only ~4% of rows), so 0.65 does NOT mean "65% chance".
+    # Isotonic regression learns the real flood rate for each raw value.
+    # It is fitted ONLY on out-of-fold predictions: for each CV fold the
+    # model predicts dekads it was not trained on. 2002-2019 only.
+    _, oof = cv_run(train, COUNTY_BASE, rule_cols=("rfh_max", "rfq_max"))
+    iso = IsotonicRegression(out_of_bounds="clip").fit(oof.prob, oof.flooded)
+    calibration = {
+        "method": "isotonic regression (sklearn, out_of_bounds=clip)",
+        "fitted_on": f"out-of-fold predictions of the 2002-2019 time-series CV "
+                     f"(5 folds, {len(oof)} county dekads)",
+        "use": "chance = linear interpolation of y over x; below x[0] -> y[0], "
+               "above x[-1] -> y[-1]",
+        "x": [float(v) for v in iso.X_thresholds_],  # raw probability
+        "y": [float(v) for v in iso.y_thresholds_],  # calibrated chance
+    }
+
     model = {
         "version": 1,
         "source": git_source(),  # which commit of this repo produced the file
@@ -210,6 +245,7 @@ def main():
         "groups": GROUPS,
         "dekad_of_year": "1..36 = (month-1)*3 + (day//10, max 2) + 1; list index = dekad-1",
         "app_notes": APP_NOTES,
+        "calibration": calibration,
         "normals": build_normals(),
     }
 
@@ -234,6 +270,15 @@ def main():
     worst = float(np.max(np.abs(sk_big - np.array(my_big))))
     print(f"\nlargest difference over 3000 rows: {worst:.2e}")
     assert worst < 5e-4, "score() does not match sklearn to 3 decimal places"
+
+    # ---- check 3: calibrate() must match sklearn's isotonic predict ----
+    grid = np.concatenate([sk_big, np.linspace(0, 1, 501)])  # real + edge values
+    iso_err = max(abs(iso.predict([p])[0] - calibrate(p, model)) for p in grid[:800])
+    print(f"calibrate() vs sklearn isotonic: largest difference {iso_err:.2e}")
+    assert iso_err < 1e-9, "calibrate() does not match sklearn"
+    for p in (0.3, 0.5, model["threshold"], 0.8, 0.95):
+        print(f"  raw {p:.3f} -> calibrated chance {calibrate(p, model):.3f}")
+    print(f"  base rate of flooded county dekads in training: {train.flooded.mean():.3f}")
 
     out = Path(a.out)
     out.parent.mkdir(exist_ok=True)
