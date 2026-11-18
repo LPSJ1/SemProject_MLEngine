@@ -57,44 +57,137 @@ GROUPS = {
 
 NORMAL_COLS = ["rfh_avg", "r1h_avg", "r3h_avg"]  # 10-day, 1-month, 3-month normals
 
-# How the Android app builds the 17 features from what the user types.
-# Inputs: county, dekad of year (1..36), three 10-day rain values in mm
-# (rfh = newest, rfh_lag1, rfh_lag2), the 3-month total r3h in mm, and a
-# "how widespread" slider (0..1). Written into model.json so the app
-# developer implements it exactly this way.
-APP_NOTES = {
-    "inputs": "county, dekad (1..36), rfh, rfh_lag1, rfh_lag2 (mm per 10 days, "
-              "newest first), r3h (mm over 3 months), widespread slider 0..1",
-    "exact": {
-        "r1h": "rfh + rfh_lag1 + rfh_lag2",
-        "rfh_avg": "normals[county].rfh_avg[dekad-1]",
-        "season_sin": "sin(2*pi*dekad/36)",
-        "season_cos": "cos(2*pi*dekad/36)",
-    },
-    "ratio_of_means": {
-        "rfq": "100 * rfh / normals[county].rfh_avg[dekad-1]",
-        "rfq_lag1": "100 * rfh_lag1 / normals[county].rfh_avg[previous dekad-1] "
-                    "(previous of dekad 1 is dekad 36)",
-        "r1q": "100 * r1h / normals[county].r1h_avg[dekad-1]",
-        "r3q": "100 * r3h / normals[county].r3h_avg[dekad-1]",
-        "caveat": "The model was trained on the average of each sub-county's "
-                  "ratio; the app divides the county's mean rain by the county's "
-                  "mean normal. Mean difference vs training: rfq 12, r1q 4, r3q 1 "
-                  "points.",
-    },
-    "approximated": {
-        "rfh_max": "set equal to rfh",
-        "rfq_max": "set equal to rfq",
-        "r1q_max": "set equal to r1q",
-        "r3q_max": "set equal to r3q",
-        "nat_frac_anom": "taken from the slider (0 = nowhere in Kenya well above "
-                         "normal, 1 = everywhere)",
-        "caveat": "The _max features are the wettest sub-county; the app has "
-                  "only one county value. Tested on 30,456 training-year county "
-                  "dekads: mean probability difference 0.008, and the alert "
-                  "decision at the threshold differs on 0.52% of rows.",
-    },
-}
+# "Percent of normal" is NOT plain rain / normal. The rainfall dataset (and so
+# the training data) adds SMOOTH mm to both, which keeps the ratio sensible
+# when the normal is tiny:   100 * (rain + 5) / (normal + 5).
+# Checked on all 120,304 sub-county rows of the HDX file: this reproduces its
+# rfq, r1q and r3q columns to within 0.0001 on every row.
+SMOOTH = 5  # mm
+
+
+def pct_of_normal(x, normal):
+    return 100 * (x + SMOOTH) / (normal + SMOOTH)
+
+
+def app_features(county, dekad, rfh, rfh_lag1, rfh_lag2, r3h, widespread, model):
+    """The 17 features exactly as the Android app builds them from what the
+    user types. Pure Python, uses only model.json (like score()).
+      county     'KE047'          dekad     1..36
+      rfh        newest 10-day rain (mm), then rfh_lag1 and rfh_lag2 before it
+      r3h        3-month total (mm)
+      widespread slider 0..1 (stands in for nat_frac_anom)"""
+    n = model["normals"][county]
+    i = dekad - 1  # list index of this dekad
+    prev = 35 if dekad == 1 else dekad - 2  # index of the previous dekad (1 -> 36)
+    f = {
+        "rfh": rfh, "rfh_lag1": rfh_lag1, "rfh_lag2": rfh_lag2, "r3h": r3h,
+        "r1h": rfh + rfh_lag1 + rfh_lag2,  # exact
+        "rfh_avg": n["rfh_avg"][i],  # exact
+        "season_sin": math.sin(2 * math.pi * dekad / 36),  # exact
+        "season_cos": math.cos(2 * math.pi * dekad / 36),  # exact
+        "nat_frac_anom": widespread,  # approximated: the slider
+    }
+    f["rfq"] = pct_of_normal(rfh, n["rfh_avg"][i])
+    f["rfq_lag1"] = pct_of_normal(rfh_lag1, n["rfh_avg"][prev])
+    f["r1q"] = pct_of_normal(f["r1h"], n["r1h_avg"][i])
+    f["r3q"] = pct_of_normal(r3h, n["r3h_avg"][i])
+    # approximated: the wettest sub-county is not known, use the county value
+    f["rfh_max"], f["rfq_max"], f["r1q_max"], f["r3q_max"] = f["rfh"], f["rfq"], f["r1q"], f["r3q"]
+    return f
+
+
+def build_app_notes(stats):
+    """How the app builds the features (written into model.json so the app
+    developer implements it exactly this way). `stats` = the measured
+    approximation errors from approximation_check()."""
+    return {
+        "inputs": "county, dekad (1..36), rfh, rfh_lag1, rfh_lag2 (mm per 10 days, "
+                  "newest first), r3h (mm over 3 months), widespread slider 0..1",
+        "exact": {
+            "r1h": "rfh + rfh_lag1 + rfh_lag2",
+            "rfh_avg": "normals[county].rfh_avg[dekad-1]",
+            "season_sin": "sin(2*pi*dekad/36)",
+            "season_cos": "cos(2*pi*dekad/36)",
+        },
+        "percent_of_normal": {
+            "rule": "100 * (x + 5) / (normal + 5), the training definition "
+                    "(5 mm added to both)",
+            "rfq": "100 * (rfh + 5) / (normals[county].rfh_avg[dekad-1] + 5)",
+            "rfq_lag1": "100 * (rfh_lag1 + 5) / (normals[county].rfh_avg[previous dekad-1] + 5) "
+                        "(previous of dekad 1 is dekad 36)",
+            "r1q": "100 * (r1h + 5) / (normals[county].r1h_avg[dekad-1] + 5)",
+            "r3q": "100 * (r3h + 5) / (normals[county].r3h_avg[dekad-1] + 5)",
+            "caveat": "The training value is the average over the county's sampled "
+                      "sub-counties of each sub-county's percentage; the app computes "
+                      "the percentage from the county's mean rain and mean normal. "
+                      f"Mean absolute difference vs training: rfq {stats['rfq']:.1f}, "
+                      f"rfq_lag1 {stats['rfq_lag1']:.1f}, r1q {stats['r1q']:.1f}, "
+                      f"r3q {stats['r3q']:.1f} points.",
+        },
+        "approximated": {
+            "rfh_max": "set equal to rfh",
+            "rfq_max": "set equal to rfq",
+            "r1q_max": "set equal to r1q",
+            "r3q_max": "set equal to r3q",
+            "nat_frac_anom": "taken from the slider (0 = nowhere in Kenya well above "
+                             "normal, 1 = everywhere)",
+            "caveat": "The _max features are the wettest sub-county; the app has "
+                      f"only one county value. Tested on {stats['rows']:,} training-year "
+                      f"county dekads (slider set to the true value): mean probability "
+                      f"difference {stats['prob_mean']:.3f}, 95th percentile "
+                      f"{stats['prob_p95']:.3f}; the high / not-high decision at the "
+                      f"threshold differs on {stats['flip_pct']:.2f}% of rows.",
+        },
+    }
+
+
+def approximation_check(train, model):
+    """Rebuild the features the way the app does, for every training row, and
+    measure how far they and the final probability are from the real ones.
+    Uses the real nat_frac_anom (a perfect slider), so only the genuine
+    approximations (county-level percentages and the _max features) show up."""
+    names = model["features"]
+    d = dekad_of_year(train.date).values
+    prev = np.where(d == 1, 36, d - 1)
+
+    def look(col, dekad):  # each row's county normal for the given dekad
+        return np.array([model["normals"][c][col][k - 1] for c, k in zip(train.county, dekad)])
+
+    f = pd.DataFrame(index=train.index)
+    f["rfh"], f["rfh_lag1"], f["rfh_lag2"], f["r3h"] = train.rfh, train.rfh_lag1, train.rfh_lag2, train.r3h
+    f["r1h"] = train.rfh + train.rfh_lag1 + train.rfh_lag2
+    f["rfh_avg"] = look("rfh_avg", d)
+    f["rfq"] = pct_of_normal(train.rfh, f.rfh_avg)
+    f["rfq_lag1"] = pct_of_normal(train.rfh_lag1, look("rfh_avg", prev))
+    f["r1q"] = pct_of_normal(f.r1h, look("r1h_avg", d))
+    f["r3q"] = pct_of_normal(train.r3h, look("r3h_avg", d))
+    f["season_sin"], f["season_cos"] = np.sin(2 * np.pi * d / 36), np.cos(2 * np.pi * d / 36)
+    f["nat_frac_anom"] = train.nat_frac_anom
+    for a, b in (("rfh_max", "rfh"), ("rfq_max", "rfq"), ("r1q_max", "r1q"), ("r3q_max", "r3q")):
+        f[a] = f[b]
+
+    # the vectorised version above must equal the pure-Python app_features()
+    for i in train.sample(200, random_state=3).index:
+        r = train.loc[i]
+        one = app_features(r.county, int(dekad_of_year(r.date)), r.rfh, r.rfh_lag1, r.rfh_lag2,
+                           r.r3h, r.nat_frac_anom, model)
+        assert all(abs(one[k] - f.loc[i, k]) < 1e-9 for k in names), "app_features() disagrees"
+
+    def probs(x):
+        z = (x[names].values - model["scaler_mean"]) / model["scaler_scale"]
+        return 1 / (1 + np.exp(-(model["intercept"] + z @ np.array(model["coefficients"]))))
+
+    p_true, p_app = probs(train), probs(f)
+    diff = np.abs(p_true - p_app)
+    t = model["threshold"]
+    return {
+        "rows": len(train),
+        **{k: float(np.abs(f[k] - train[k]).mean()) for k in ("rfq", "rfq_lag1", "r1q", "r3q")},
+        "prob_mean": float(diff.mean()), "prob_p95": float(np.percentile(diff, 95)),
+        "corr": float(np.corrcoef(p_true, p_app)[0, 1]),
+        "flip_pct": float(((p_true >= t) != (p_app >= t)).mean() * 100),
+        "alerts_true": int((p_true >= t).sum()), "alerts_app": int((p_app >= t).sum()),
+    }
 
 
 def git_source():
@@ -326,7 +419,7 @@ def main():
         # result is an extrapolation.
         "training_range": {f: {"min": float(train[f].min()), "max": float(train[f].max())}
                            for f in COUNTY_BASE},
-        "app_notes": APP_NOTES,
+        "app_notes": None,  # filled in below, once the approximation error is measured
         "calibration": calibration,
         "normals": build_normals(),
     }
@@ -337,6 +430,16 @@ def main():
     mine = [model["normals"][c]["rfh_avg"][d - 1] for c, d in zip(tmp.county, tmp.dekad)]
     normals_err = float(np.max(np.abs(np.array(mine) - tmp.rfh_avg.values)))
     print(f"normals vs training rfh_avg: max difference {normals_err:.4f} mm")
+
+    # ---- check 1b: how close are the app's features to the real ones? ----
+    stats = approximation_check(train, model)
+    model["app_notes"] = build_app_notes(stats)
+    print(f"\napp-style features vs real, {stats['rows']} training county dekads:")
+    print("  mean abs difference (points of % of normal): "
+          f"rfq {stats['rfq']:.2f}  rfq_lag1 {stats['rfq_lag1']:.2f}  r1q {stats['r1q']:.2f}  r3q {stats['r3q']:.2f}")
+    print(f"  probability: mean diff {stats['prob_mean']:.4f}, 95th pct {stats['prob_p95']:.4f}, corr {stats['corr']:.4f}")
+    print(f"  high / not-high differs on {stats['flip_pct']:.2f}% of rows "
+          f"(true alerts {stats['alerts_true']}, app alerts {stats['alerts_app']})")
 
     # ---- check 2: score() must match sklearn's predict_proba ----
     sample = train.sample(5, random_state=0)
